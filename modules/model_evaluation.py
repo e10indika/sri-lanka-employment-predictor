@@ -4,6 +4,8 @@ Handles model evaluation, visualization, and performance metrics.
 """
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for thread safety
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import (
