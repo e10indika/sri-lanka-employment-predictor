@@ -6,6 +6,7 @@ python-multipart>=0.0.6
 
 # Machine Learning (from main requirements)
 xgboost>=2.0.0
+lightgbm>=4.0.0
 scikit-learn>=1.4.0
 pandas>=2.1.0
 numpy>=1.26.0,<2.0.0

@@ -10,6 +10,12 @@ import os
 import joblib
 import pandas as pd
 import numpy as np
+import shap
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import base64
+from io import BytesIO
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
@@ -27,6 +33,7 @@ class PredictionResponse(BaseModel):
     probabilities: Dict[str, float]
     model_type: str
     model_name: str
+    shap_force_plot: Optional[str] = None  # Base64 encoded image
 
 @router.post("/predict", response_model=PredictionResponse)
 async def make_prediction(request: PredictionRequest):
@@ -60,6 +67,64 @@ async def make_prediction(request: PredictionRequest):
         # Map prediction to label
         prediction_label = "Employed" if prediction == 1 else "Unemployed"
         
+        # Generate SHAP force plot
+        shap_force_plot_base64 = None
+        try:
+            # Try to load saved SHAP explainer first
+            explainer = None
+            model_dir = model_info.get('model_dir')
+            
+            if model_dir:
+                explainer_path = os.path.join(model_dir, 'shap_explainer.pkl')
+                if os.path.exists(explainer_path):
+                    print(f"Loading saved SHAP explainer from {explainer_path}")
+                    explainer = joblib.load(explainer_path)
+            
+            # If no saved explainer, create one on the fly (slower)
+            if explainer is None:
+                print("Creating SHAP explainer on the fly...")
+                background_sample = np.repeat(input_scaled, 50, axis=0)
+                explainer = shap.Explainer(model.predict_proba, background_sample)
+            
+            # Calculate SHAP values
+            shap_values = explainer(input_scaled)
+            
+            # For binary classification, get values for positive class (Employed = 1)
+            if len(shap_values.shape) == 3:  # (samples, features, classes)
+                shap_values_for_plot = shap_values[0, :, 1].values
+                expected_value = shap_values[0, :, 1].base_values
+            else:
+                shap_values_for_plot = shap_values[0].values
+                expected_value = shap_values[0].base_values
+            
+            # Ensure expected_value is a scalar
+            if isinstance(expected_value, (list, np.ndarray)):
+                expected_value = float(expected_value[0]) if len(expected_value) > 0 else float(expected_value)
+            else:
+                expected_value = float(expected_value)
+            
+            # Create force plot
+            plt.figure(figsize=(20, 3))
+            shap.force_plot(
+                expected_value,
+                shap_values_for_plot,
+                input_df.iloc[0],
+                matplotlib=True,
+                show=False
+            )
+            
+            # Convert plot to base64
+            buffer = BytesIO()
+            plt.savefig(buffer, format='png', bbox_inches='tight', dpi=100)
+            buffer.seek(0)
+            shap_force_plot_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+            plt.close()
+        except Exception as shap_error:
+            # If SHAP fails, log but don't fail the prediction
+            print(f"SHAP force plot generation failed: {shap_error}")
+            import traceback
+            traceback.print_exc()
+        
         return PredictionResponse(
             prediction=prediction,
             prediction_label=prediction_label,
@@ -68,7 +133,8 @@ async def make_prediction(request: PredictionRequest):
                 "Employed": float(prediction_proba[1])
             },
             model_type=request.model_type,
-            model_name=model_info['model_name']
+            model_name=model_info['model_name'],
+            shap_force_plot=shap_force_plot_base64
         )
     except HTTPException:
         raise

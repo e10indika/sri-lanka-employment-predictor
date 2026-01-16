@@ -3,6 +3,7 @@ Model training module for Sri Lanka Employment Predictor.
 Handles model initialization, training, hyperparameter tuning, and saving.
 """
 import xgboost as xgb
+import lightgbm as lgb
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
@@ -11,6 +12,7 @@ from sklearn.model_selection import GridSearchCV, cross_val_score
 import joblib
 import numpy as np
 import os
+import shap
 from config import MODEL_PATH, MODEL_PARAMS, CV_FOLDS, RANDOM_STATE, MODEL_CONFIGS, DEFAULT_MODEL_TYPE
 
 
@@ -22,7 +24,7 @@ class ModelTrainer:
         Initialize model trainer.
         
         Args:
-            model_type: Type of model ('xgboost', 'random_forest', 'decision_tree', 
+            model_type: Type of model ('xgboost', 'lightgbm', 'random_forest', 'decision_tree', 
                        'gradient_boosting', 'naive_bayes', 'logistic_regression')
             model_params: Dictionary of model hyperparameters. 
                          If None, uses default params from config.
@@ -61,6 +63,8 @@ class ModelTrainer:
         
         if self.model_type == 'xgboost':
             model = xgb.XGBClassifier(**params)
+        elif self.model_type == 'lightgbm':
+            model = lgb.LGBMClassifier(**params)
         elif self.model_type == 'random_forest':
             model = RandomForestClassifier(**params)
         elif self.model_type == 'decision_tree':
@@ -96,8 +100,8 @@ class ModelTrainer:
         # Ensure proper format
         y_train_adjusted = y_train.astype(int)
         
-        # XGBoost supports verbose parameter, others don't
-        if self.model_type == 'xgboost' and verbose:
+        # XGBoost and LightGBM support verbose parameter, others don't
+        if self.model_type in ['xgboost', 'lightgbm'] and verbose:
             self.model.fit(X_train, y_train_adjusted, verbose=verbose)
         else:
             self.model.fit(X_train, y_train_adjusted)
@@ -185,21 +189,26 @@ class ModelTrainer:
         
         return self.best_params, self.model
     
-    def save_model(self, filepath=None, save_model_info=True):
+    def save_model(self, filepath=None, save_model_info=True, X_train=None):
         """
-        Save trained model to disk with model-specific filename in models/ directory.
+        Save trained model to disk in separate directory with SHAP explainer.
         
         Args:
-            filepath: Path to save model. If None, uses model type in filename.
+            filepath: Path to save model. If None, creates directory for model type.
             save_model_info: Whether to save model metadata (type, name, etc.)
+            X_train: Training data for creating SHAP explainer (optional)
         """
         if self.model is None:
             raise ValueError("No trained model to save. Train a model first.")
         
-        # If no filepath provided, create one with model type in models/ directory
+        # Create separate directory for this model
+        from config import MODEL_DIR
+        model_dir = os.path.join(MODEL_DIR, self.model_type)
+        os.makedirs(model_dir, exist_ok=True)
+        
+        # If no filepath provided, use standard structure
         if filepath is None:
-            from config import MODEL_DIR
-            filepath = os.path.join(MODEL_DIR, f'model_{self.model_type}.pkl')
+            filepath = os.path.join(model_dir, 'model.pkl')
         
         # Save model data
         model_data = {
@@ -212,6 +221,21 @@ class ModelTrainer:
         joblib.dump(model_data, filepath)
         print(f"Model saved to {filepath}")
         
+        # Create and save SHAP explainer if training data provided
+        if X_train is not None:
+            try:
+                print("Creating SHAP explainer...")
+                # Use a sample of training data as background
+                background_sample = shap.sample(X_train, min(100, len(X_train)))
+                explainer = shap.Explainer(self.model.predict_proba, background_sample)
+                
+                # Save explainer
+                explainer_path = os.path.join(model_dir, 'shap_explainer.pkl')
+                joblib.dump(explainer, explainer_path)
+                print(f"SHAP explainer saved to {explainer_path}")
+            except Exception as e:
+                print(f"Warning: Could not create SHAP explainer: {e}")
+        
         # Save model info for the UI
         if save_model_info:
             from config import MODEL_INFO_PATH
@@ -219,7 +243,8 @@ class ModelTrainer:
             model_info = {
                 'model_type': self.model_type,
                 'model_name': self.model_name,
-                'model_path': filepath
+                'model_path': filepath,
+                'model_dir': model_dir
             }
             with open(MODEL_INFO_PATH, 'w') as f:
                 json.dump(model_info, f)

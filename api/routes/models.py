@@ -36,6 +36,18 @@ async def get_model_configs():
     """Get available model configurations"""
     return MODEL_CONFIGS
 
+@router.get("/types")
+async def get_model_types():
+    """Get list of available model types for training and predictions"""
+    model_types = []
+    for key, config in MODEL_CONFIGS.items():
+        model_types.append({
+            "value": key,
+            "label": config['name'],
+            "params": config['params']
+        })
+    return {"model_types": model_types}
+
 @router.get("/compare")
 async def compare_models():
     """Get comparison data for all trained models"""

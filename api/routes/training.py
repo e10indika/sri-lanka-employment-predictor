@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirna
 from modules.data_preprocessing import DataPreprocessor
 from modules.model_training import ModelTrainer
 from modules.model_evaluation import ModelEvaluator
-from config import RAW_DATA_PATH, MODEL_CONFIGS
+from config import RAW_DATA_PATH, MODEL_CONFIGS, MODEL_DIR, get_model_viz_paths
+import glob
 
 router = APIRouter()
 
@@ -44,6 +45,22 @@ def train_model_task(job_id: str, request: TrainingRequest):
     """Background task for model training"""
     try:
         training_jobs[job_id]['status'] = 'running'
+        training_jobs[job_id]['progress'] = 5
+        training_jobs[job_id]['message'] = 'Deleting old model...'
+        
+        # Delete old model directory if it exists
+        model_dir = os.path.join(MODEL_DIR, request.model_type)
+        if os.path.exists(model_dir):
+            import shutil
+            shutil.rmtree(model_dir)
+            training_jobs[job_id]['message'] = f'Old {request.model_type} model deleted'
+        
+        # Delete old visualizations
+        viz_paths = get_model_viz_paths(request.model_type)
+        for path in viz_paths.values():
+            if os.path.exists(path):
+                os.remove(path)
+        
         training_jobs[job_id]['progress'] = 10
         training_jobs[job_id]['message'] = 'Loading data...'
         
@@ -95,10 +112,10 @@ def train_model_task(job_id: str, request: TrainingRequest):
         metrics = evaluator.evaluate_model(feature_names=feature_names, generate_plots=True)
         
         training_jobs[job_id]['progress'] = 90
-        training_jobs[job_id]['message'] = 'Saving model...'
+        training_jobs[job_id]['message'] = 'Saving model and SHAP explainer...'
         
-        # Save model
-        trainer.save_model()
+        # Save model with SHAP explainer
+        trainer.save_model(X_train=X_train)
         
         training_jobs[job_id]['progress'] = 100
         training_jobs[job_id]['status'] = 'completed'

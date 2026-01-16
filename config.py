@@ -87,27 +87,33 @@ def load_feature_columns():
     return []
 
 def get_available_models():
-    """Get list of available trained models from models/ directory."""
+    """Get list of available trained models from models/ subdirectories."""
     import glob
-    model_files = glob.glob(os.path.join(MODEL_DIR, 'model_*.pkl'))
+    import joblib
+    
     available_models = []
     
-    for model_file in model_files:
-        try:
-            import joblib
-            model_data = joblib.load(model_file)
-            if isinstance(model_data, dict) and 'model_type' in model_data:
-                model_type = model_data['model_type']
-                viz_paths = get_model_viz_paths(model_type)
-                available_models.append({
-                    'path': model_file,
-                    'filename': os.path.basename(model_file),
-                    'model_type': model_type,
-                    'model_name': model_data.get('model_name', model_type),
-                    'visualizations': viz_paths
-                })
-        except:
-            pass
+    # Look for model directories (each model type has its own directory)
+    model_dirs = [d for d in glob.glob(os.path.join(MODEL_DIR, '*')) if os.path.isdir(d)]
+    
+    for model_dir in model_dirs:
+        model_file = os.path.join(model_dir, 'model.pkl')
+        if os.path.exists(model_file):
+            try:
+                model_data = joblib.load(model_file)
+                if isinstance(model_data, dict) and 'model_type' in model_data:
+                    model_type = model_data['model_type']
+                    viz_paths = get_model_viz_paths(model_type)
+                    available_models.append({
+                        'path': model_file,
+                        'filename': os.path.basename(model_file),
+                        'model_type': model_type,
+                        'model_name': model_data.get('model_name', model_type),
+                        'model_dir': model_dir,
+                        'visualizations': viz_paths
+                    })
+            except:
+                pass
     
     return available_models
 
@@ -115,7 +121,7 @@ def get_available_models():
 FEATURE_COLUMNS = load_feature_columns()
 
 # Default model type
-DEFAULT_MODEL_TYPE = 'xgboost'  # Options: 'xgboost', 'random_forest', 'decision_tree', 'gradient_boosting', 'naive_bayes', 'logistic_regression'
+DEFAULT_MODEL_TYPE = 'xgboost'  # Options: 'xgboost', 'lightgbm', 'random_forest', 'decision_tree', 'gradient_boosting', 'naive_bayes', 'logistic_regression'
 
 # Model hyperparameters for different models
 MODEL_CONFIGS = {
@@ -131,6 +137,20 @@ MODEL_CONFIGS = {
             'objective': 'binary:logistic',
             'eval_metric': 'logloss',
             'scale_pos_weight': 1
+        }
+    },
+    'lightgbm': {
+        'name': 'LightGBM',
+        'params': {
+            'n_estimators': 200,
+            'max_depth': 5,
+            'learning_rate': 0.1,
+            'subsample': 0.8,
+            'colsample_bytree': 0.8,
+            'random_state': 42,
+            'objective': 'binary',
+            'metric': 'binary_logloss',
+            'verbosity': -1
         }
     },
     'random_forest': {

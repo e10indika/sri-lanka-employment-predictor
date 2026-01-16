@@ -7,6 +7,7 @@ from typing import Dict, Any
 import sys
 import os
 import pandas as pd
+import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
@@ -158,6 +159,72 @@ async def get_correlation_matrix():
         return {
             'columns': corr_matrix.columns.tolist(),
             'matrix': corr_matrix.values.tolist()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/row/{row_number}")
+async def get_row_data(row_number: int):
+    """Get data for a specific row number with human-readable labels"""
+    try:
+        if not os.path.exists(PROCESSED_DATA_PATH):
+            raise HTTPException(status_code=404, detail="Processed dataset not found")
+        
+        df = pd.read_csv(PROCESSED_DATA_PATH)
+        
+        # Check if row number is valid (0-indexed)
+        if row_number < 0 or row_number >= len(df):
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Row {row_number} not found. Dataset has {len(df)} rows (0-{len(df)-1})"
+            )
+        
+        # Load feature info for label mapping
+        feature_info = {}
+        feature_info_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'feature_info.json')
+        if os.path.exists(feature_info_path):
+            import json
+            with open(feature_info_path, 'r') as f:
+                feature_info = json.load(f)
+        
+        # Get the row
+        row = df.iloc[row_number]
+        
+        # Convert to dictionary and handle different data types
+        row_dict = {}
+        row_labels = {}  # Store human-readable labels
+        
+        for k, v in row.to_dict().items():
+            # Convert value to appropriate type
+            if pd.isna(v):
+                row_dict[k] = None
+                row_labels[k] = None
+            elif isinstance(v, (bool, np.bool_)):
+                row_dict[k] = bool(v)
+                row_labels[k] = str(v)
+            elif isinstance(v, (int, np.integer)):
+                row_dict[k] = int(v)
+                # Try to get human-readable label from feature_info
+                if k in feature_info and 'options' in feature_info[k]:
+                    label = feature_info[k]['options'].get(str(int(v)))
+                    row_labels[k] = label if label else str(int(v))
+                else:
+                    row_labels[k] = str(int(v))
+            elif isinstance(v, (float, np.floating)):
+                row_dict[k] = float(v)
+                row_labels[k] = str(float(v))
+            else:
+                # Keep strings and other types as-is
+                row_dict[k] = str(v)
+                row_labels[k] = str(v)
+        
+        return {
+            'row_number': row_number,
+            'data': row_dict,
+            'labels': row_labels,  # Human-readable labels
+            'total_rows': int(len(df))
         }
     except HTTPException:
         raise
