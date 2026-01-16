@@ -7,8 +7,8 @@ echo "ReDoc Documentation will be available at: http://localhost:8000/redoc"
 echo ""
 
 # Activate virtual environment if it exists
-if [ -d "../venv" ]; then
-    source ../venv/bin/activate
+if [ -d "venv" ]; then
+    source venv/bin/activate
 elif [ -d "$HOME/venvs/py3kernel" ]; then
     source $HOME/venvs/py3kernel/bin/activate
 fi

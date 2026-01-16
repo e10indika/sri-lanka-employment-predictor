@@ -25,23 +25,33 @@ async def get_dataset_info():
         
         # Basic info
         info = {
-            'rows': len(df),
-            'columns': len(df.columns),
+            'rows': int(len(df)),
+            'columns': int(len(df.columns)),
             'column_names': df.columns.tolist(),
             'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()},
-            'memory_usage': df.memory_usage(deep=True).sum(),
-            'missing_values': df.isnull().sum().to_dict()
+            'memory_usage': int(df.memory_usage(deep=True).sum()),
+            'missing_values': {k: int(v) for k, v in df.isnull().sum().to_dict().items()}
         }
         
-        # Statistics
-        numeric_stats = df.describe().to_dict()
+        # Statistics - handle NaN values and convert numpy types
+        stats_df = df.describe()
+        numeric_stats = {}
+        for col in stats_df.columns:
+            numeric_stats[col] = {}
+            for idx in stats_df.index:
+                val = stats_df.loc[idx, col]
+                # Convert to native Python type and handle NaN
+                if pd.isna(val):
+                    numeric_stats[col][idx] = None
+                else:
+                    numeric_stats[col][idx] = float(val)
         
         # Class distribution if Employment_Status_Encoded exists
         if 'Employment_Status_Encoded' in df.columns:
             class_dist = df['Employment_Status_Encoded'].value_counts().to_dict()
             info['class_distribution'] = {
-                'Unemployed': class_dist.get(0, 0),
-                'Employed': class_dist.get(1, 0)
+                'Unemployed': int(class_dist.get(0, 0)),
+                'Employed': int(class_dist.get(1, 0))
             }
         
         return {
@@ -62,6 +72,9 @@ async def get_sample_data(n: int = 10):
         
         df = pd.read_csv(PROCESSED_DATA_PATH)
         sample = df.head(n)
+        
+        # Replace NaN with None for JSON serialization
+        sample = sample.replace({float('nan'): None})
         
         return {
             'data': sample.to_dict(orient='records'),
@@ -94,19 +107,27 @@ async def get_column_info(column_name: str):
             'unique': int(col.nunique())
         }
         
-        # Add statistics for numeric columns
+        # Add statistics for numeric columns - handle NaN
         if pd.api.types.is_numeric_dtype(col):
+            mean_val = col.mean()
+            std_val = col.std()
+            min_val = col.min()
+            max_val = col.max()
+            median_val = col.median()
+            
             info.update({
-                'mean': float(col.mean()),
-                'std': float(col.std()),
-                'min': float(col.min()),
-                'max': float(col.max()),
-                'median': float(col.median())
+                'mean': None if pd.isna(mean_val) else float(mean_val),
+                'std': None if pd.isna(std_val) else float(std_val),
+                'min': None if pd.isna(min_val) else float(min_val),
+                'max': None if pd.isna(max_val) else float(max_val),
+                'median': None if pd.isna(median_val) else float(median_val)
             })
         
         # Add value counts for categorical or low-cardinality columns
         if col.nunique() < 20:
-            info['value_counts'] = col.value_counts().to_dict()
+            value_counts = col.value_counts().to_dict()
+            # Convert keys and values to JSON-safe types
+            info['value_counts'] = {str(k): int(v) for k, v in value_counts.items()}
         
         return info
     except HTTPException:
@@ -130,6 +151,9 @@ async def get_correlation_matrix():
             raise HTTPException(status_code=400, detail="No numeric columns found")
         
         corr_matrix = numeric_df.corr()
+        
+        # Replace NaN with None for JSON serialization
+        corr_matrix = corr_matrix.replace({float('nan'): None})
         
         return {
             'columns': corr_matrix.columns.tolist(),

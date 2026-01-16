@@ -53,11 +53,9 @@ visualizations/*.svg
 .DS_Store
 Thumbs.db
 
-# Streamlit
-.streamlit/
-
 # Logs
 *.log
 
-# Node modules
-frontend/node_modules/
+# Environment
+.env
+.env.local
