@@ -56,11 +56,12 @@ curl http://localhost:8000/api/datasets/info
 ## 🎯 Available Models
 
 - `xgboost` (Recommended)
+- `lightgbm`
 - `random_forest`
 - `gradient_boosting`
+- `decision_tree`
+- `naive_bayes`
 - `logistic_regression`
-- `svm`
-- `neural_network`
 
 ## 🌐 External Access
 

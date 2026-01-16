@@ -121,24 +121,24 @@ def get_available_models():
 FEATURE_COLUMNS = load_feature_columns()
 
 # Default model type
-DEFAULT_MODEL_TYPE = 'xgboost'  # Options: 'xgboost', 'lightgbm', 'random_forest', 'decision_tree', 'gradient_boosting', 'naive_bayes', 'logistic_regression'
+DEFAULT_MODEL_TYPE = 'lightgbm'  # Options: 'xgboost', 'lightgbm', 'random_forest', 'decision_tree', 'gradient_boosting', 'naive_bayes', 'logistic_regression'
 
 # Model hyperparameters for different models
 MODEL_CONFIGS = {
-    'xgboost': {
-        'name': 'XGBoost',
-        'params': {
-            'n_estimators': 200,
-            'max_depth': 5,
-            'learning_rate': 0.1,
-            'subsample': 0.8,
-            'colsample_bytree': 0.8,
-            'random_state': 42,
-            'objective': 'binary:logistic',
-            'eval_metric': 'logloss',
-            'scale_pos_weight': 1
-        }
-    },
+    # 'xgboost': {
+    #     'name': 'XGBoost',
+    #     'params': {
+    #         'n_estimators': 200,
+    #         'max_depth': 5,
+    #         'learning_rate': 0.1,
+    #         'subsample': 0.8,
+    #         'colsample_bytree': 0.8,
+    #         'random_state': 42,
+    #         'objective': 'binary:logistic',
+    #         'eval_metric': 'logloss',
+    #         'scale_pos_weight': 1
+    #     }
+    # },
     'lightgbm': {
         'name': 'LightGBM',
         'params': {
@@ -153,51 +153,51 @@ MODEL_CONFIGS = {
             'verbosity': -1
         }
     },
-    'random_forest': {
-        'name': 'Random Forest',
-        'params': {
-            'n_estimators': 200,
-            'max_depth': 10,
-            'min_samples_split': 5,
-            'min_samples_leaf': 2,
-            'random_state': 42
-        }
-    },
-    'decision_tree': {
-        'name': 'Decision Tree',
-        'params': {
-            'max_depth': 10,
-            'min_samples_split': 5,
-            'min_samples_leaf': 2,
-            'random_state': 42
-        }
-    },
-    'gradient_boosting': {
-        'name': 'Gradient Boosting',
-        'params': {
-            'n_estimators': 200,
-            'learning_rate': 0.1,
-            'max_depth': 5,
-            'subsample': 0.8,
-            'random_state': 42
-        }
-    },
-    'naive_bayes': {
-        'name': 'Naive Bayes',
-        'params': {}
-    },
-    'logistic_regression': {
-        'name': 'Logistic Regression',
-        'params': {
-            'max_iter': 1000,
-            'random_state': 42,
-            'solver': 'lbfgs'
-        }
-    }
+    # 'random_forest': {
+    #     'name': 'Random Forest',
+    #     'params': {
+    #         'n_estimators': 200,
+    #         'max_depth': 10,
+    #         'min_samples_split': 5,
+    #         'min_samples_leaf': 2,
+    #         'random_state': 42
+    #     }
+    # },
+    # 'decision_tree': {
+    #     'name': 'Decision Tree',
+    #     'params': {
+    #         'max_depth': 10,
+    #         'min_samples_split': 5,
+    #         'min_samples_leaf': 2,
+    #         'random_state': 42
+    #     }
+    # },
+    # 'gradient_boosting': {
+    #     'name': 'Gradient Boosting',
+    #     'params': {
+    #         'n_estimators': 200,
+    #         'learning_rate': 0.1,
+    #         'max_depth': 5,
+    #         'subsample': 0.8,
+    #         'random_state': 42
+    #     }
+    # },
+    # 'naive_bayes': {
+    #     'name': 'Naive Bayes',
+    #     'params': {}
+    # },
+    # 'logistic_regression': {
+    #     'name': 'Logistic Regression',
+    #     'params': {
+    #         'max_iter': 1000,
+    #         'random_state': 42,
+    #         'solver': 'lbfgs'
+    #     }
+    # }
 }
 
-# Legacy support - default to XGBoost params
-MODEL_PARAMS = MODEL_CONFIGS['xgboost']['params']
+# Legacy support - default to LightGBM params
+MODEL_PARAMS = MODEL_CONFIGS['lightgbm']['params']
 
 # Training parameters
 TEST_SIZE = 0.2

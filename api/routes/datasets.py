@@ -12,8 +12,75 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from config import RAW_DATA_PATH, PROCESSED_DATA_PATH, SAMPLE_PATH
+from modules.data_preprocessing import DataPreprocessor
 
 router = APIRouter()
+
+@router.post("/preprocess")
+async def preprocess_dataset(file: UploadFile = File(None)):
+    """
+    Run data preprocessing pipeline to generate processed_data.csv
+    
+    Args:
+        file: Optional CSV file upload. If provided, uses this file instead of default raw data.
+    """
+    try:
+        data_path = RAW_DATA_PATH
+        temp_file_path = None
+        
+        # If file is uploaded, save it temporarily and use it
+        if file is not None:
+            # Validate file type
+            if not file.filename.endswith('.csv'):
+                raise HTTPException(status_code=400, detail="Only CSV files are accepted")
+            
+            # Save uploaded file temporarily
+            import tempfile
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
+            temp_file_path = temp_file.name
+            
+            # Write uploaded content to temp file
+            content = await file.read()
+            temp_file.write(content)
+            temp_file.close()
+            
+            data_path = temp_file_path
+        else:
+            # Check if default raw data exists
+            if not os.path.exists(RAW_DATA_PATH):
+                raise HTTPException(status_code=404, detail="Raw dataset not found. Please upload a CSV file.")
+        
+        # Run preprocessing
+        preprocessor = DataPreprocessor()
+        X_train, X_test, y_train, y_test, df = preprocessor.prepare_data_pipeline(data_path)
+        
+        # Clean up temp file if it was created
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+        
+        return {
+            'status': 'success',
+            'message': 'Data preprocessing completed successfully',
+            'details': {
+                'total_rows': int(len(df)),
+                'train_samples': int(len(X_train)),
+                'test_samples': int(len(X_test)),
+                'features': int(X_train.shape[1]),
+                'processed_file': PROCESSED_DATA_PATH,
+                'source': 'uploaded_file' if file else 'default_raw_data'
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        # Clean up temp file on error
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Preprocessing failed: {str(e)}\n{traceback.format_exc()}"
+        )
 
 @router.get("/info")
 async def get_dataset_info():

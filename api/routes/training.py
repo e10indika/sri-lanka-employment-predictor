@@ -27,6 +27,8 @@ class TrainingRequest(BaseModel):
     perform_cv: bool = True
     cv_folds: int = 5
     perform_tuning: bool = False
+    use_param_grid: bool = True  # Whether to use param_grid when tuning (True=use default or custom, False=simple training)
+    param_grid: Optional[Dict[str, List[Any]]] = None  # Custom parameter grid for tuning
     
 class TrainingResponse(BaseModel):
     job_id: str
@@ -81,26 +83,57 @@ def train_model_task(job_id: str, request: TrainingRequest):
             training_jobs[job_id]['progress'] = 50
         
         # Train model
-        if request.perform_tuning:
-            # Simplified param grid for API
-            param_grid = {}
-            if request.model_type == 'xgboost':
-                param_grid = {
-                    'max_depth': [3, 5, 7],
-                    'learning_rate': [0.05, 0.1, 0.2],
-                    'n_estimators': [100, 200]
-                }
-            elif request.model_type in ['random_forest', 'gradient_boosting']:
-                param_grid = {
-                    'max_depth': [5, 10, 15],
-                    'n_estimators': [100, 200]
-                }
+        if not request.perform_tuning:
+            # No tuning at all - use default parameters
+            model = trainer.train_model(X_train, y_train, verbose=False)
+        elif request.perform_tuning and not request.use_param_grid:
+            # Tuning with default params but not using param_grid
+            # ModelTrainer will use its own default hyperparameter tuning
+            best_params, model = trainer.hyperparameter_tuning(X_train, y_train, cv=3)
+        elif request.perform_tuning and request.use_param_grid:
+            # Tuning with param_grid (either custom or default)
+            param_grid = request.param_grid
             
+            if not param_grid:
+                # Use default param grid defined here
+                if request.model_type == 'xgboost':
+                    param_grid = {
+                        'max_depth': [3, 5, 7],
+                        'learning_rate': [0.05, 0.1, 0.2],
+                        'n_estimators': [100, 200]
+                    }
+                elif request.model_type == 'lightgbm':
+                    param_grid = {
+                        'max_depth': [3, 5, 7, -1],
+                        'learning_rate': [0.05, 0.1, 0.2],
+                        'n_estimators': [100, 200, 300],
+                        'num_leaves': [31, 50, 70]
+                    }
+                elif request.model_type in ['random_forest', 'gradient_boosting']:
+                    param_grid = {
+                        'max_depth': [5, 10, 15],
+                        'n_estimators': [100, 200]
+                    }
+                elif request.model_type == 'decision_tree':
+                    param_grid = {
+                        'max_depth': [5, 10, 15, 20],
+                        'min_samples_split': [2, 5, 10],
+                        'min_samples_leaf': [1, 2, 4]
+                    }
+                elif request.model_type == 'logistic_regression':
+                    param_grid = {
+                        'C': [0.01, 0.1, 1.0, 10.0],
+                        'solver': ['lbfgs', 'liblinear']
+                    }
+            
+            # Use param_grid for tuning
             if param_grid:
                 best_params, model = trainer.hyperparameter_tuning(X_train, y_train, param_grid=param_grid, cv=3)
             else:
+                # Fallback if no param_grid defined
                 model = trainer.train_model(X_train, y_train, verbose=False)
         else:
+            # Fallback - train without tuning
             model = trainer.train_model(X_train, y_train, verbose=False)
         
         training_jobs[job_id]['progress'] = 70
@@ -117,15 +150,51 @@ def train_model_task(job_id: str, request: TrainingRequest):
         # Save model with SHAP explainer
         trainer.save_model(X_train=X_train)
         
+        # Collect comprehensive training results
+        results = {
+            'metrics': metrics,
+            'cv_scores': cv_scores.tolist() if cv_scores is not None else None,
+            'cv_mean': float(cv_scores.mean()) if cv_scores is not None else None,
+            'cv_std': float(cv_scores.std()) if cv_scores is not None else None,
+            'model_type': request.model_type,
+            'model_name': trainer.model_name,
+            'training_details': {
+                'train_samples': int(len(X_train)),
+                'test_samples': int(len(X_test)),
+                'features': int(X_train.shape[1]),
+                'cv_performed': request.perform_cv,
+                'cv_folds': request.cv_folds if request.perform_cv else None,
+                'hyperparameter_tuning': request.perform_tuning,
+                'use_param_grid': request.use_param_grid if request.perform_tuning else None
+            }
+        }
+        
+        # Add best hyperparameters if tuning was performed
+        if request.perform_tuning and hasattr(trainer, 'best_params') and trainer.best_params:
+            results['best_hyperparameters'] = trainer.best_params
+            results['training_details']['tuned_parameters'] = list(trainer.best_params.keys())
+            if request.use_param_grid:
+                results['training_details']['param_grid_used'] = 'custom' if request.param_grid else 'default'
+            else:
+                results['training_details']['param_grid_used'] = 'none'
+        else:
+            # Include default parameters used
+            results['hyperparameters'] = MODEL_CONFIGS[request.model_type]['params']
+        
+        # Add feature importance if available
+        if hasattr(model, 'feature_importances_'):
+            feature_importance = {}
+            if feature_names:
+                for name, importance in zip(feature_names, model.feature_importances_):
+                    feature_importance[name] = float(importance)
+                # Sort by importance
+                feature_importance = dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=True))
+                results['feature_importance'] = feature_importance
+        
         training_jobs[job_id]['progress'] = 100
         training_jobs[job_id]['status'] = 'completed'
         training_jobs[job_id]['message'] = 'Training completed successfully'
-        training_jobs[job_id]['results'] = {
-            'metrics': metrics,
-            'cv_scores': cv_scores.tolist() if cv_scores is not None else None,
-            'model_type': request.model_type,
-            'model_name': trainer.model_name
-        }
+        training_jobs[job_id]['results'] = results
         
     except Exception as e:
         training_jobs[job_id]['status'] = 'failed'
