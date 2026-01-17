@@ -14,6 +14,8 @@ from sklearn.metrics import (
 )
 import shap
 import joblib
+from lime import lime_tabular
+from sklearn.inspection import PartialDependenceDisplay
 from config import CM_PATH, FI_PATH, SHAP_PATH, get_model_viz_paths
 
 
@@ -40,6 +42,11 @@ class ModelEvaluator:
         # Get model-specific visualization paths if model_type is provided
         if model_type:
             self.viz_paths = get_model_viz_paths(model_type)
+            # Add LIME and PDP paths in root VIZ_DIR with model_type suffix
+            from config import VIZ_DIR
+            import os
+            self.viz_paths['lime_explanation'] = os.path.join(VIZ_DIR, f'lime_explanation_{model_type}.png')
+            self.viz_paths['pdp_plot'] = os.path.join(VIZ_DIR, f'partial_dependence_{model_type}.png')
         else:
             self.viz_paths = {
                 'confusion_matrix': CM_PATH,
@@ -292,12 +299,173 @@ class ModelEvaluator:
             print(f"Warning: Could not generate SHAP plot for {type(model_obj).__name__}: {str(e)}")
             print("Skipping SHAP visualization for this model.")
     
-    def generate_all_visualizations(self, feature_names=None):
+    def generate_lime_explanation(self, X_train, feature_names=None, save_path=None, 
+                                   num_samples=5, num_features=10):
         """
-        Generate all evaluation visualizations.
+        Generate LIME explanations for sample predictions.
+        
+        Args:
+            X_train: Training data (used as background for LIME)
+            feature_names: List of feature names
+            save_path: Path to save plot (uses model-specific path if None)
+            num_samples: Number of test samples to explain
+            num_features: Number of top features to show in explanation
+        """
+        if save_path is None:
+            save_path = self.viz_paths.get('lime_explanation', 'visualizations/lime_explanation.png')
+        
+        print("Generating LIME explanations...")
+        
+        # Get the actual model object
+        if isinstance(self.model, dict):
+            model_obj = self.model['model']
+        else:
+            model_obj = self.model
+        
+        try:
+            # Convert to numpy arrays if needed
+            X_train_np = X_train.values if hasattr(X_train, 'values') else X_train
+            X_test_np = self.X_test.values if hasattr(self.X_test, 'values') else self.X_test
+            
+            # Create LIME explainer
+            explainer = lime_tabular.LimeTabularExplainer(
+                X_train_np,
+                feature_names=feature_names if feature_names else [f'Feature_{i}' for i in range(X_train_np.shape[1])],
+                class_names=['Unemployed', 'Employed'],
+                mode='classification',
+                random_state=42
+            )
+            
+            # Select random samples to explain
+            sample_indices = np.random.choice(len(X_test_np), 
+                                            min(num_samples, len(X_test_np)), 
+                                            replace=False)
+            
+            # Create subplots for multiple explanations
+            fig, axes = plt.subplots(num_samples, 1, figsize=(12, 4*num_samples))
+            if num_samples == 1:
+                axes = [axes]
+            
+            for idx, sample_idx in enumerate(sample_indices):
+                # Get explanation for this instance
+                exp = explainer.explain_instance(
+                    X_test_np[sample_idx],
+                    model_obj.predict_proba,
+                    num_features=num_features
+                )
+                
+                # Get prediction
+                pred = model_obj.predict([X_test_np[sample_idx]])[0]
+                pred_proba = model_obj.predict_proba([X_test_np[sample_idx]])[0]
+                actual = self.y_test.iloc[sample_idx] if hasattr(self.y_test, 'iloc') else self.y_test[sample_idx]
+                
+                # Plot explanation
+                exp_list = exp.as_list()
+                features = [f[0] for f in exp_list]
+                weights = [f[1] for f in exp_list]
+                
+                colors = ['green' if w > 0 else 'red' for w in weights]
+                axes[idx].barh(range(len(features)), weights, color=colors, alpha=0.6)
+                axes[idx].set_yticks(range(len(features)))
+                axes[idx].set_yticklabels(features, fontsize=9)
+                axes[idx].set_xlabel('Feature Weight', fontsize=10)
+                axes[idx].set_title(
+                    f'Sample {sample_idx}: Predicted={pred} (prob={pred_proba[pred]:.3f}), Actual={int(actual)}',
+                    fontsize=11, fontweight='bold'
+                )
+                axes[idx].axvline(x=0, color='black', linestyle='--', linewidth=0.8)
+                axes[idx].grid(axis='x', alpha=0.3)
+            
+            plt.suptitle('LIME Explanations - Individual Predictions', 
+                        fontsize=16, fontweight='bold', y=1.0)
+            plt.tight_layout()
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"LIME explanations saved to {save_path}")
+            
+        except Exception as e:
+            print(f"Warning: Could not generate LIME explanations: {str(e)}")
+            print("Skipping LIME visualization.")
+    
+    def plot_partial_dependence(self, X_train, feature_names=None, save_path=None, 
+                                features_to_plot=None, num_features=4):
+        """
+        Generate Partial Dependence Plots (PDP) for top features.
+        
+        Args:
+            X_train: Training data (used for PDP computation)
+            feature_names: List of feature names
+            save_path: Path to save plot (uses model-specific path if None)
+            features_to_plot: Specific feature indices to plot (None = auto-select top features)
+            num_features: Number of features to plot if features_to_plot is None
+        """
+        if save_path is None:
+            save_path = self.viz_paths.get('pdp_plot', 'visualizations/partial_dependence.png')
+        
+        print("Generating Partial Dependence Plots...")
+        
+        # Get the actual model object
+        if isinstance(self.model, dict):
+            model_obj = self.model['model']
+        else:
+            model_obj = self.model
+        
+        try:
+            # Convert to numpy arrays if needed
+            X_train_np = X_train.values if hasattr(X_train, 'values') else X_train
+            
+            # Determine which features to plot
+            if features_to_plot is None:
+                # Select top features based on feature importance
+                if hasattr(model_obj, 'feature_importances_'):
+                    importance = model_obj.feature_importances_
+                    top_indices = np.argsort(importance)[-num_features:][::-1]
+                    features_to_plot = top_indices.tolist()
+                elif hasattr(model_obj, 'coef_'):
+                    importance = np.abs(model_obj.coef_[0])
+                    top_indices = np.argsort(importance)[-num_features:][::-1]
+                    features_to_plot = top_indices.tolist()
+                else:
+                    # Default to first num_features
+                    features_to_plot = list(range(min(num_features, X_train_np.shape[1])))
+            
+            # Create feature names if not provided
+            if feature_names is None:
+                feature_names = [f'Feature_{i}' for i in range(X_train_np.shape[1])]
+            
+            # Generate PDP
+            fig, ax = plt.subplots(figsize=(14, 10))
+            
+            display = PartialDependenceDisplay.from_estimator(
+                model_obj,
+                X_train_np,
+                features=features_to_plot,
+                feature_names=feature_names,
+                n_cols=2,
+                grid_resolution=50,
+                ax=ax
+            )
+            
+            plt.suptitle('Partial Dependence Plots - Feature Effects on Prediction', 
+                        fontsize=16, fontweight='bold')
+            plt.tight_layout()
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"Partial Dependence Plots saved to {save_path}")
+            
+        except Exception as e:
+            print(f"Warning: Could not generate Partial Dependence Plots: {str(e)}")
+            print("Skipping PDP visualization.")
+    
+    def generate_all_visualizations(self, feature_names=None, X_train=None):
+        """
+        Generate all evaluation visualizations including LIME and PDP.
         
         Args:
             feature_names: List of feature names
+            X_train: Training data (needed for LIME and PDP)
         """
         print("\nGenerating evaluation visualizations...")
         
@@ -310,15 +478,24 @@ class ModelEvaluator:
         # SHAP summary
         self.plot_shap_summary(feature_names, sample_size=500)
         
+        # LIME explanations (if training data provided)
+        if X_train is not None:
+            self.generate_lime_explanation(X_train, feature_names, num_samples=3)
+        
+        # Partial Dependence Plots (if training data provided)
+        if X_train is not None:
+            self.plot_partial_dependence(X_train, feature_names, num_features=4)
+        
         print("\nAll visualizations generated successfully!")
     
-    def evaluate_model(self, feature_names=None, generate_plots=True):
+    def evaluate_model(self, feature_names=None, generate_plots=True, X_train=None):
         """
         Complete evaluation pipeline.
         
         Args:
             feature_names: List of feature names
             generate_plots: Whether to generate visualizations
+            X_train: Training data (needed for LIME and PDP)
         
         Returns:
             Dictionary of metrics
@@ -333,7 +510,7 @@ class ModelEvaluator:
         
         # Generate visualizations
         if generate_plots:
-            self.generate_all_visualizations(feature_names)
+            self.generate_all_visualizations(feature_names, X_train)
         
         print("\n" + "="*60)
         print("EVALUATION COMPLETE")

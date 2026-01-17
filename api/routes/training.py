@@ -139,10 +139,10 @@ def train_model_task(job_id: str, request: TrainingRequest):
         training_jobs[job_id]['progress'] = 70
         training_jobs[job_id]['message'] = 'Evaluating model...'
         
-        # Evaluation
+        # Evaluation with LIME and PDP (pass X_train for these analyses)
         evaluator = ModelEvaluator(model, X_test, y_test, model_type=request.model_type)
         feature_names = preprocessor.feature_columns if hasattr(preprocessor, 'feature_columns') else None
-        metrics = evaluator.evaluate_model(feature_names=feature_names, generate_plots=True)
+        metrics = evaluator.evaluate_model(feature_names=feature_names, generate_plots=True, X_train=X_train)
         
         training_jobs[job_id]['progress'] = 90
         training_jobs[job_id]['message'] = 'Saving model and SHAP explainer...'
@@ -166,6 +166,14 @@ def train_model_task(job_id: str, request: TrainingRequest):
                 'cv_folds': request.cv_folds if request.perform_cv else None,
                 'hyperparameter_tuning': request.perform_tuning,
                 'use_param_grid': request.use_param_grid if request.perform_tuning else None
+            },
+            'visualizations': {
+                'confusion_matrix': f'/api/visualizations/{request.model_type}/confusion-matrix',
+                'feature_importance': f'/api/visualizations/{request.model_type}/feature-importance',
+                'shap_summary': f'/api/visualizations/{request.model_type}/shap-summary',
+                'lime_explanation': f'/api/visualizations/{request.model_type}/lime-explanation',
+                'partial_dependence': f'/api/visualizations/{request.model_type}/partial-dependence',
+                'status': f'/api/visualizations/{request.model_type}/status'
             }
         }
         

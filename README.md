@@ -17,18 +17,26 @@ API will be available at:
 ## ✨ Features
 
 ### Machine Learning
-- **Multiple Models:** XGBoost, Random Forest, Gradient Boosting, Logistic Regression, SVM, Neural Network
+- **Multiple Models:** LightGBM (primary), XGBoost, Random Forest, and more
 - **Automated Training:** Background job processing with progress tracking
-- **Hyperparameter Tuning:** Optional GridSearchCV optimization
+- **Hyperparameter Tuning:** 4-level tuning system (none, basic, default grid, custom grid)
 - **Cross-Validation:** K-fold validation with configurable folds
-- **Model Persistence:** Automatic saving and versioning
+- **Model Persistence:** Automatic saving with SHAP explainers
+
+### Model Interpretability & Analysis
+- **Feature Importance:** Global feature ranking and contribution analysis
+- **SHAP Analysis:** Game-theory based feature attribution with summary plots
+- **LIME Explanations:** Individual prediction explanations for stakeholders
+- **Partial Dependence Plots:** Visualize feature effects on predictions
+- **Comprehensive Visualizations:** Auto-generated during training
 
 ### API Capabilities
 - **RESTful API:** Clean, documented endpoints
 - **Batch Predictions:** Process multiple predictions at once
 - **Model Comparison:** Side-by-side performance metrics
 - **Dataset Analysis:** Statistics, samples, correlations
-- **Visualizations:** Confusion matrices, feature importance, SHAP plots
+- **Data Preprocessing:** Endpoint for processing raw CSV files
+- **Visualizations:** 5 types of plots including confusion matrix, feature importance, SHAP, LIME, and PDP
 
 ### Performance
 - **Fast Inference:** Optimized prediction pipeline
