@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Data (keep directory structure but ignore large files)
+data/*.csv
+data/*.json
+!data/.gitkeep
+
+# Models (keep directory structure but ignore model files)
+models/*.pkl
+models/*.json
+!models/.gitkeep
+
+# Visualizations (keep directory structure but ignore images)
+visualizations/*.png
+visualizations/*.jpg
+visualizations/*.svg
+!visualizations/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
